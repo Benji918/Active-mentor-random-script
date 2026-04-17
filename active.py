@@ -40,8 +40,7 @@ def run():
         print("Launching browser...")
         browser = p.chromium.launch_persistent_context(
             user_data_dir="./slack_session",
-            headless=True,
-            channel="chrome",
+            headless=False,
             args=["--disable-extensions", "--no-sandbox"]
         )
 
@@ -49,13 +48,24 @@ def run():
 
         print("Loading Slack...")
         page.goto(SLACK_WORKSPACE_URL)
-        page.wait_for_load_state("networkidle")
+        
+        # Check if we need to log in
+        if not page.locator('[data-qa="message_input"]').first.is_visible():
+            print("⚠️ Message box not found. You might need to log in manually.")
+            print("--- PLEASE LOGIN IN THE BROWSER WINDOW ---")
+            # Wait until the message box appears (meaning login is successful) 
+            # or the user closes the browser.
+            try:
+                page.wait_for_selector('[data-qa="message_input"]', timeout=0)
+                print("✅ Login detected!")
+            except Exception:
+                print("Browser closed or error occurred.")
+                return
 
-        # --- Pre-load: focus the input and type the message BEFORE midnight ---
         print("Pre-typing message into input box...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
-        page.wait_for_timeout(500)
+        # page.wait_for_timeout(500)
         message_box.type(MESSAGE, delay=0)  # type instantly, no human delay
         print("Message pre-loaded. Waiting for midnight...")
 
@@ -75,7 +85,20 @@ def run():
             time.sleep(0.0005)  # poll every 0.5ms
 
         page.wait_for_timeout(2000)  # wait to confirm it sent
-        browser.close()
+        
+        print("\n--- Task Complete ---")
+        print("The browser will remain open so you can check the session.")
+        print("Press Ctrl+C in this terminal or close the browser window to exit.")
+        
+        try:
+            # Keep the script alive until the browser is actually closed by the user
+            while True:
+                if not browser.is_connected():
+                    break
+                page.wait_for_timeout(1000)
+        except (KeyboardInterrupt, Exception):
+            print("\nClosing session...")
+            # browser.close()
 
 if __name__ == "__main__":
     run()
