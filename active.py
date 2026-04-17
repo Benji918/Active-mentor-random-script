@@ -63,10 +63,16 @@ def run():
         print("Pre-typing message into input box...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
-        # Clear existing text manually since fill() fails on Slack's complex editor
+        page.wait_for_timeout(200)  # Wait for Slack to catch the focus
+        
+        # Clear existing text manually
         page.keyboard.press("Control+a")
+        page.wait_for_timeout(100)  # Wait for selection
         page.keyboard.press("Backspace")
-        page.keyboard.type(MESSAGE, delay=0)
+        page.wait_for_timeout(100)  # Wait for deletion
+        
+        # Type the message with a small delay for stability during pre-load
+        page.keyboard.type(MESSAGE, delay=20) 
         print("Message pre-loaded. Waiting for midnight...")
 
         # Sleep until 200ms before midnight (give time to wake up precisely)
@@ -82,11 +88,7 @@ def run():
                 
                 for i in range(1, 5):
                     if i > 1:
-                        # Re-clear and fill the box for subsequent sends
-                        message_box.click()
-                        page.keyboard.press("Control+a")
-                        page.keyboard.press("Backspace")
-                        page.keyboard.type(MESSAGE, delay=0)
+                        page.keyboard.type(MESSAGE)
                     
                     page.keyboard.press("Enter")
                     
