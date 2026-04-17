@@ -60,13 +60,13 @@ def run():
                 print("✅ Login detected!")
             except Exception:
                 print("Browser closed or error occurred.")
-                return
-
         print("Pre-typing message into input box...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
-        # page.wait_for_timeout(500)
-        message_box.type(MESSAGE, delay=0)  # type instantly, no human delay
+        # Clear existing text manually since fill() fails on Slack's complex editor
+        page.keyboard.press("Control+a")
+        page.keyboard.press("Backspace")
+        page.keyboard.type(MESSAGE, delay=0)
         print("Message pre-loaded. Waiting for midnight...")
 
         # Sleep until 200ms before midnight (give time to wake up precisely)
@@ -78,9 +78,22 @@ def run():
         while True:
             now = accurate_now(ntp_offset).astimezone(WAT)
             if now.hour == 0 and now.minute == 0 and now.second == 0:
-                page.keyboard.press("Enter")
-                fired_at = accurate_now(ntp_offset).astimezone(WAT)
-                print(f"🚀 Message sent at {fired_at.strftime('%H:%M:%S.%f')} WAT")
+                print(f"🎯 MIDNIGHT STRUCK! Firing 4-message burst...")
+                
+                for i in range(1, 5):
+                    if i > 1:
+                        # Re-clear and fill the box for subsequent sends
+                        message_box.click()
+                        page.keyboard.press("Control+a")
+                        page.keyboard.press("Backspace")
+                        page.keyboard.type(MESSAGE, delay=0)
+                    
+                    page.keyboard.press("Enter")
+                    
+                    # Log the precise firing time for each
+                    fired_at = accurate_now(ntp_offset).astimezone(WAT)
+                    print(f"🚀 Message {i} sent at {fired_at.strftime('%H:%M:%S.%f')} WAT")
+                
                 break
             time.sleep(0.0005)  # poll every 0.5ms
 
