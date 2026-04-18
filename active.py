@@ -101,72 +101,46 @@ def run():
                 print("Browser closed or error occurred.")
                 return
 
-        # ──────────────── PRE-LOAD MESSAGE ────────────────
         print("Pre-typing message into input box...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
         page.wait_for_timeout(300)
 
-        # Clear existing text
         page.keyboard.press("Control+a")
         page.wait_for_timeout(100)
         page.keyboard.press("Backspace")
         page.wait_for_timeout(100)
 
-        # Type the first message (this one is already loaded when we fire)
         page.keyboard.type(MESSAGE, delay=20)
         print(f"Message pre-loaded: '{MESSAGE}'")
 
-        # ──────────────── PHASE 1: COARSE SLEEP ────────────────
-        # Sleep until 3 seconds before midnight (saves CPU)
         coarse_sleep = (midnight_ns - accurate_time_ns(offset_ns)) / 1e9 - 3.0
         if coarse_sleep > 0:
             print(f"Coarse sleeping for {coarse_sleep:.1f}s...")
             time.sleep(coarse_sleep)
 
-        # ──────────────── PHASE 2: FINE SLEEP ────────────────
-        # Sleep in smaller chunks until 50ms before midnight
         print("Fine-tuning timing...")
         while True:
             remaining = (midnight_ns - accurate_time_ns(offset_ns)) / 1e9
-            if remaining <= 0.05:  # 50ms before midnight
+            if remaining <= 0.05:
                 break
-            # Sleep for half the remaining time (converges quickly)
             time.sleep(remaining * 0.5)
 
-        # ──────────────── PHASE 3: BUSY SPIN (last ~50ms) ────────────────
-        # Ultra-tight spin for the final stretch - minimal work per iteration
         while accurate_time_ns(offset_ns) < midnight_ns:
-            pass  # Pure spin, no datetime conversion, no timezone, just integer compare
+            pass
 
-        # ──────────────── 🔥 FIRE! 🔥 ────────────────
-        # Message 1: Already typed, just press Enter
-        fire_times = []
-
-        # Fastest possible Enter: use CDP directly
         page.keyboard.press("Enter")
-        fire_times.append(time.time_ns() + offset_ns)
 
-        # Messages 2-4: Type + Enter as fast as possible
-        for i in range(3):
-            # Use page.evaluate to set the message and fire it via JS
-            # This bypasses Playwright's character-by-character typing
+        for i in range(5):
             page.evaluate("""() => {
                 const editor = document.querySelector('[data-qa="message_input"] [contenteditable="true"]');
                 if (editor) {
                     editor.focus();
+                    document.execCommand('selectAll', false, null);
                     document.execCommand('insertText', false, 'Active');
                 }
             }""")
             page.keyboard.press("Enter")
-            fire_times.append(time.time_ns() + offset_ns)
-
-        # ──────────────── LOG RESULTS (after burst) ────────────────
-        print(f"\n🎯 MIDNIGHT BURST COMPLETE!")
-        for i, ft in enumerate(fire_times, 1):
-            ts = datetime.fromtimestamp(ft / 1e9, tz=WAT)
-            delta_ms = (ft - midnight_ns) / 1e6
-            print(f"🚀 Message {i} sent at {ts.strftime('%H:%M:%S.%f')} WAT (midnight +{delta_ms:.1f}ms)")
 
         page.wait_for_timeout(2000)  # wait to confirm it sent
 
