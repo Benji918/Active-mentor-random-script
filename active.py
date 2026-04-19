@@ -8,6 +8,10 @@ import subprocess
 SLACK_WORKSPACE_URL = "https://hng-14.slack.com/archives/C0AFU2RH486"
 MESSAGE = "Active"
 WAT = pytz.timezone("Africa/Lagos")
+
+# 5 fire points spread evenly from 10ms before midnight to exact midnight
+FIRE_OFFSETS_MS = [10, 7.5, 5, 2.5, 0]
+
 NTP_SERVERS = [
     "pool.ntp.org",
     "time.google.com",
@@ -18,7 +22,6 @@ NTP_SERVERS = [
 
 
 def get_ntp_offset():
-    """Sync with NTP server to get accurate time offset. Tries multiple servers."""
     client = ntplib.NTPClient()
     for server in NTP_SERVERS:
         for attempt in range(3):
@@ -29,11 +32,11 @@ def get_ntp_offset():
                 return offset
             except Exception:
                 pass
-    print("⚠️ ALL NTP servers failed! Trying chronyc/timedatectl for system time accuracy...")
-    # Check if system time is NTP-synced at the OS level
     try:
-        result = subprocess.run(["timedatectl", "show", "--property=NTPSynchronized"],
-                                capture_output=True, text=True, timeout=2)
+        result = subprocess.run(
+            ["timedatectl", "show", "--property=NTPSynchronized"],
+            capture_output=True, text=True, timeout=2
+        )
         if "yes" in result.stdout.lower():
             print("✅ System clock is NTP-synchronized via systemd-timesyncd")
             return 0.0
@@ -44,32 +47,59 @@ def get_ntp_offset():
 
 
 def accurate_time_ns(offset_ns):
-    """Return NTP-corrected time in nanoseconds since epoch."""
     return time.time_ns() + offset_ns
 
 
 def accurate_now(offset_ns):
-    """Return NTP-corrected current datetime."""
     ts = accurate_time_ns(offset_ns) / 1e9
     return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 
 def get_next_midnight_ns(offset_ns):
-    """Get the exact nanosecond timestamp of the next midnight WAT."""
     now = accurate_now(offset_ns).astimezone(WAT)
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     return int(midnight.timestamp() * 1e9)
 
 
+def warm_connection(page):
+    """Send a dummy fetch to Slack's servers to keep TCP connection hot."""
+    try:
+        page.evaluate("""async () => {
+            await fetch('https://slack.com/api/api.test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            });
+        }""")
+        print("🔥 Connection warmed")
+    except Exception:
+        pass
+
+
+def inject_message(page, text):
+    """Re-inject message via JS — faster than keyboard.type between sends."""
+    page.evaluate(f"""() => {{
+        const editor = document.querySelector(
+            '[data-qa="message_input"] [contenteditable="true"]'
+        );
+        if (editor) {{
+            editor.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, '{text}');
+        }}
+    }}""")
+
+
 def run():
-    # ──────────────── NTP SYNC ────────────────
     ntp_offset = get_ntp_offset()
-    offset_ns = int(ntp_offset * 1e9)  # Convert to nanoseconds for precision
+    offset_ns = int(ntp_offset * 1e9)
 
     midnight_ns = get_next_midnight_ns(offset_ns)
+
     now_ns = accurate_time_ns(offset_ns)
     secs_until = (midnight_ns - now_ns) / 1e9
-    print(f"Time until midnight (WAT): {secs_until:.2f}s")
+    print(f"⏱ Time until midnight (WAT): {secs_until:.2f}s")
+    print(f"🎯 Will send 5 messages from 10ms before midnight to exact midnight")
 
     with sync_playwright() as p:
         print("Launching browser...")
@@ -82,6 +112,7 @@ def run():
                 "--disable-background-timer-throttling",
                 "--disable-renderer-backgrounding",
                 "--disable-backgrounding-occluded-windows",
+                "--disable-hang-monitor",
             ]
         )
 
@@ -90,63 +121,69 @@ def run():
         print("Loading Slack...")
         page.goto(SLACK_WORKSPACE_URL, wait_until="networkidle")
 
-        # Check if we need to log in
+        # Login check
         if not page.locator('[data-qa="message_input"]').first.is_visible():
-            print("⚠️ Message box not found. You might need to log in manually.")
-            print("--- PLEASE LOGIN IN THE BROWSER WINDOW ---")
+            print("⚠️ Please log in to Slack in the browser window...")
             try:
                 page.wait_for_selector('[data-qa="message_input"]', timeout=0)
                 print("✅ Login detected!")
             except Exception:
-                print("Browser closed or error occurred.")
+                print("Browser closed or error.")
                 return
 
-        print("Pre-typing message into input box...")
+        # Pre-type message
+        print("Pre-typing message...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
-        page.wait_for_timeout(300)
-
         page.keyboard.press("Control+a")
-        page.wait_for_timeout(100)
         page.keyboard.press("Backspace")
-        page.wait_for_timeout(100)
+        page.keyboard.type(MESSAGE, delay=10)
+        print(f"✅ Message pre-loaded: '{MESSAGE}'")
 
-        page.keyboard.type(MESSAGE, delay=20)
-        print(f"Message pre-loaded: '{MESSAGE}'")
-
-        coarse_sleep = (midnight_ns - accurate_time_ns(offset_ns)) / 1e9 - 3.0
+        # ── Coarse sleep: sleep until 10s before first fire ──
+        first_fire_ns = midnight_ns - int(max(FIRE_OFFSETS_MS) * 1_000_000)
+        coarse_sleep = (first_fire_ns - accurate_time_ns(offset_ns)) / 1e9 - 10.0
         if coarse_sleep > 0:
-            print(f"Coarse sleeping for {coarse_sleep:.1f}s...")
+            print(f"💤 Coarse sleeping for {coarse_sleep:.1f}s...")
             time.sleep(coarse_sleep)
 
-        print("Fine-tuning timing...")
+        # ── Warm the TCP connection ──
+        print("🔥 Warming connection...")
+        warm_connection(page)
+
+        # ── Fine-tune: adaptive sleep down to 50ms before first fire ──
+        print("🎯 Fine-tuning...")
         while True:
-            remaining = (midnight_ns - accurate_time_ns(offset_ns)) / 1e9
+            remaining = (first_fire_ns - accurate_time_ns(offset_ns)) / 1e9
             if remaining <= 0.05:
                 break
             time.sleep(remaining * 0.5)
 
-        while accurate_time_ns(offset_ns) < midnight_ns:
-            pass
+        # ── Pre-calculate all 5 fire timestamps ──
+        fire_times_ns = [
+            midnight_ns - int(ms * 1_000_000)
+            for ms in FIRE_OFFSETS_MS
+        ]
 
-        page.keyboard.press("Enter")
+        # ── FIRE LOOP ──
+        for i, fire_ns_target in enumerate(fire_times_ns):
+            # Spin lock until this specific fire time
+            while accurate_time_ns(offset_ns) < fire_ns_target:
+                pass
 
-        for i in range(5):
-            page.evaluate("""() => {
-                const editor = document.querySelector('[data-qa="message_input"] [contenteditable="true"]');
-                if (editor) {
-                    editor.focus();
-                    document.execCommand('selectAll', false, null);
-                    document.execCommand('insertText', false, 'Active');
-                }
-            }""")
             page.keyboard.press("Enter")
+            fired_at = accurate_now(offset_ns).astimezone(WAT)
+            offset_from_midnight = (fire_ns_target - midnight_ns) / 1_000_000
+            print(f"🚀 Message {i+1}/5 | {fired_at.strftime('%H:%M:%S.%f')} WAT | offset: {offset_from_midnight:.1f}ms")
 
-        page.wait_for_timeout(2000)  # wait to confirm it sent
+            # Re-inject text for next send (skip after last)
+            if i < len(fire_times_ns) - 1:
+                inject_message(page, MESSAGE)
 
-        print("\n--- Task Complete ---")
-        print("The browser will remain open so you can check the session.")
-        print("Press Ctrl+C in this terminal or close the browser window to exit.")
+        page.wait_for_timeout(3000)
+
+        print("\n✅ Done. Browser stays open — check Slack to confirm.")
+        print("Press Ctrl+C to exit.")
 
         try:
             while True:
@@ -154,7 +191,7 @@ def run():
                     break
                 page.wait_for_timeout(1000)
         except (KeyboardInterrupt, Exception):
-            print("\nClosing session...")
+            print("\nClosing...")
 
 
 if __name__ == "__main__":
