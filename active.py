@@ -136,8 +136,7 @@ def run():
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
         page.keyboard.press("Control+a")
-        page.keyboard.press("Backspace")
-        page.keyboard.type(MESSAGE, delay=10)
+        page.keyboard.type(MESSAGE, delay=20)
         print(f"✅ Message pre-loaded: '{MESSAGE}'")
 
         # ── Coarse sleep: sleep until 10s before first fire ──
@@ -151,13 +150,13 @@ def run():
         print("🔥 Warming connection...")
         warm_connection(page)
 
-        # ── Fine-tune: adaptive sleep down to 50ms before first fire ──
-        print("🎯 Fine-tuning...")
-        while True:
-            remaining = (first_fire_ns - accurate_time_ns(offset_ns)) / 1e9
-            if remaining <= 0.05:
-                break
-            time.sleep(remaining * 0.5)
+        # # ── Fine-tune: adaptive sleep down to 50ms before first fire ──
+        # print("🎯 Fine-tuning...")
+        # while True:
+        #     remaining = (first_fire_ns - accurate_time_ns(offset_ns)) / 1e9
+        #     if remaining <= 0.05:
+        #         break
+        #     time.sleep(remaining * 0.5)
 
         # ── Pre-calculate all 5 fire timestamps ──
         fire_times_ns = [
