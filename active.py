@@ -10,7 +10,7 @@ MESSAGE = "Active"
 WAT = pytz.timezone("Africa/Lagos")
 
 # 5 fire points spread evenly from 10ms before midnight to exact midnight
-FIRE_OFFSETS_MS = [10, 7.5, 5, 2.5, 0]
+FIRE_OFFSETS_MS = [2000, 1000, 10, 7.5, 5, 2.5, 0]
 
 NTP_SERVERS = [
     "pool.ntp.org",
@@ -149,14 +149,6 @@ def run():
         # ── Warm the TCP connection ──
         print("🔥 Warming connection...")
         warm_connection(page)
-
-        # # ── Fine-tune: adaptive sleep down to 50ms before first fire ──
-        # print("🎯 Fine-tuning...")
-        # while True:
-        #     remaining = (first_fire_ns - accurate_time_ns(offset_ns)) / 1e9
-        #     if remaining <= 0.05:
-        #         break
-        #     time.sleep(remaining * 0.5)
 
         # ── Pre-calculate all 5 fire timestamps ──
         fire_times_ns = [
