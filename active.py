@@ -159,7 +159,7 @@ def run():
             page.keyboard.press("Enter")
             fire_times.append(time.time_ns() + offset_ns)
 
-        # ──────────────── LOG RESULTS (after burst) ────────────────
+        # ──────────────── LOG RESULTS (after burst) ─────────────
         print(f"\n🎯 MIDNIGHT BURST COMPLETE!")
         for i, ft in enumerate(fire_times, 1):
             ts = datetime.fromtimestamp(ft / 1e9, tz=WAT)
