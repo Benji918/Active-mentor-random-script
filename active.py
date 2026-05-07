@@ -105,13 +105,13 @@ def run():
         print("Pre-typing message into input box...")
         message_box = page.locator('[data-qa="message_input"]').first
         message_box.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(10)
 
         # Clear existing text
         page.keyboard.press("Control+a")
-        page.wait_for_timeout(100)
+        page.wait_for_timeout(10)
         page.keyboard.press("Backspace")
-        page.wait_for_timeout(100)
+        page.wait_for_timeout(10)
 
         # Type the first message (this one is already loaded when we fire)
         page.keyboard.type(MESSAGE, delay=20)

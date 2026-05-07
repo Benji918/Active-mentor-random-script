@@ -4,10 +4,10 @@ from datetime import datetime, timezone, timedelta
 import pytz
 import time
 
-SLACK_WORKSPACE_URL = "https://hng-14.slack.com/archives/C0AFU2RH486"
+SLACK_WORKSPACE_URL = "https://hng-14.slack.com/archives/C0B29NPHDK7"
 MESSAGE = "Active"
 WAT = pytz.timezone("Africa/Lagos")
-NTP_SERVER = "pool.ntp.org"
+NTP_SERVER = "time.google.com"
 
 # --- NTP TIME ---
 def get_ntp_time():
@@ -61,15 +61,18 @@ def run():
         abs_targets = [next_midnight - t for t in targets]
         sent = [False] * len(abs_targets)
         print("Waiting for target times to send messages...")
+        # Use the initial ntp_now as the reference and system time for polling
+        start_monotonic = time.monotonic()
         while not all(sent):
-            now = get_ntp_time()
+            # Estimate current NTP time based on elapsed system time
+            now = ntp_now + (time.monotonic() - start_monotonic)
             for idx, target_time in enumerate(abs_targets):
                 if not sent[idx] and now >= target_time:
                     # Send message
                     message_box.click()
-                    page.wait_for_timeout(100)
+                    page.wait_for_timeout(10)
                     page.keyboard.press("Control+a")
-                    page.wait_for_timeout(50)
+                    page.wait_for_timeout(10)
                     page.keyboard.type(MESSAGE, delay=10)
                     page.keyboard.press("Enter")
                     print(f"Sent 'Active' at {datetime.now(WAT).strftime('%H:%M:%S.%f')} (target {idx+1})")
