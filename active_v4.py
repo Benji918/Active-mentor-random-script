@@ -61,24 +61,19 @@ def run():
         abs_targets = [next_midnight - t for t in targets]
         sent = [False] * len(abs_targets)
         print("Waiting for target times to send messages...")
-        # Use the initial ntp_now as the reference and system time for polling
         start_monotonic = time.monotonic()
         while not all(sent):
-            # Estimate current NTP time based on elapsed system time
             now = ntp_now + (time.monotonic() - start_monotonic)
             for idx, target_time in enumerate(abs_targets):
                 if not sent[idx] and now >= target_time:
-                    # Send message
+                    # Refill the message box with 'Active' before each send
                     message_box.click()
-                    page.wait_for_timeout(10)
                     page.keyboard.press("Control+a")
-                    page.wait_for_timeout(10)
-                    page.keyboard.type(MESSAGE, delay=10)
+                    page.keyboard.type(MESSAGE, delay=0)
                     page.keyboard.press("Enter")
                     print(f"Sent 'Active' at {datetime.now(WAT).strftime('%H:%M:%S.%f')} (target {idx+1})")
                     sent[idx] = True
-            # Sleep a short time to avoid busy waiting
-            time.sleep(0.001)
+            time.sleep(0.0005)  # Even tighter loop for precision
         print("All messages sent. Script complete.")
         page.wait_for_timeout(2000)
         print("You may close the browser or script now.")
